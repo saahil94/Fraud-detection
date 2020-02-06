@@ -1,0 +1,129 @@
+---
+title: "Exam 2: Fraud Detection"
+author: "Saahil Deshpande"
+date: "October 28, 2017"
+output: word_document
+---
+
+#Missing Data:
+The Xtrain, Xvalidate and Xtest datasets have a few missing values which would create disputes when forming a model. To fix for these disputes, it is necessary to impute the values in place of these missing values.Since the frequence of missing values is not too large for any column or row, i did not exclude a feature or an observation I imputed the mean of the columns for the numeric feature of each dataset and the mode of the column for the ordinal features of the dataset.
+
+
+
+
+```{r}
+yourName = 'SaahilDeshpande'#fill in your name, no spaces, leave quotes
+load('D:/saahi/OneDrive/Documents/Stat 6306/exam 2/Ytrain.Rdata')
+load('D:/saahi/OneDrive/Documents/Stat 6306/exam 2/Xtrain.Rdata')
+load('D:/saahi/OneDrive/Documents/Stat 6306/exam 2/Xtest.Rdata')
+load('D:/saahi/OneDrive/Documents/Stat 6306/exam 2/Xvalidate.Rdata')
+load('D:/saahi/OneDrive/Documents/Stat 6306/exam 2/Yvalidate.Rdata')
+
+```
+
+```{r}
+Ytrain<- factor(Ytrain)
+Yvalidate<- factor(Yvalidate)
+```
+
+```{r}
+require(Amelia)
+require(randomForest)
+missmap(Xtrain, main = "Xtrain: original")
+missmap(Xvalidate, main = "Xvalidate: original")
+missmap(Xtest,main = "Xtest: original")
+Xtrain_imp<- na.roughfix(Xtrain)
+Xvalidate_imp<- na.roughfix(Xvalidate)
+Xtest_imp<- na.roughfix(Xtest)
+missmap(Xtrain_imp,main = "Xtrain: imputed")
+missmap(Xvalidate_imp, main = "Xvalidate: imputed")
+missmap(Xtest_imp, main = "Xtest: imputed")
+```
+
+
+```{r}
+## This code is taken from Homework 3 and Homework 4 for STAT 6306 and modified
+misClass =function(pred.class,true.class,produceOutput=FALSE){
+  confusion.mat = table(pred.class,true.class)
+  if(produceOutput){
+    return(1-sum(diag(confusion.mat))/sum(confusion.mat))	
+  }
+  else{
+    print('miss-class')
+    print(1-sum(diag(confusion.mat))/sum(confusion.mat))
+    print('Sensitivity')
+    print(confusion.mat[1,1]/sum(confusion.mat[,1]))
+    print('Specificity')
+    print(confusion.mat[2,2]/sum(confusion.mat[,2]))
+    print('Precision')
+    print(confusion.mat[1,1]/sum(confusion.mat[1,]))
+    print('Recall')
+    print(confusion.mat[1,1]/sum(confusion.mat[,1]))
+    print('F1 score')
+    print(2*(confusion.mat[1,1]/sum(confusion.mat[1,])*confusion.mat[1,1]/sum(confusion.mat[,1]))/(confusion.mat[1,1]/sum(confusion.mat[1,])+confusion.mat[1,1]/sum(confusion.mat[,1])))
+    print('confusion mat')
+    print(confusion.mat)
+  }
+}
+```
+
+
+```{r}
+out.rf<- randomForest(Xtrain_imp,Ytrain)
+class.rf<-predict(out.rf,Xvalidate_imp)
+out.bag<- randomForest(Xtrain_imp,Ytrain, importance = T, mtry = ncol(Xtrain),cutoff = c(0.486,1-0.486))
+class.bag<- predict(out.bag,Xvalidate_imp)
+```
+
+```{r}
+varImpPlot(out.bag,type = 2, main = "Variable importance plot")
+```
+```{r}
+xtrain<- Xtrain_imp
+xvalidate<- Xvalidate_imp
+xtrain$V255<- as.numeric(xtrain$V255)
+xtrain$V256<- as.numeric(xtrain$V256)
+xvalidate$V255<- as.numeric(xvalidate$V255)
+xvalidate$V256<- as.numeric(xvalidate$V256)
+```
+
+```{r}
+require(glmnet)
+Xmat = as.matrix(xtrain,dimnames = NULL)
+Ynum = as.numeric(Ytrain)-1
+lasso.cv.glmnet = cv.glmnet(Xmat,Ynum,alpha=1,family='binomial',nfolds = 10)
+sum.out<- summary(lasso.cv.glmnet)
+```
+
+```{r}
+plot(lasso.cv.glmnet)
+betaHat.lasso<-coef(lasso.cv.glmnet,s='lambda.min')[-1]
+S.lasso<- which(abs(betaHat.lasso)> 1e-16)
+```
+
+```{r}
+Xmat_0 = as.matrix(xvalidate,dimnames = NULL)
+Ynum_0 = as.numeric(Yvalidate)-1
+Yhat.lasso   = predict(lasso.cv.glmnet, Xmat_0,
+                     s='lambda.min',type='class')
+```
+
+```{r}
+misClass(class.rf,Yvalidate)
+misClass(class.bag, Yvalidate)
+misClass(Yhat.lasso,Ynum_0)
+```
+
+```{r}
+
+Ypred<- predict(out.bag,Xtest_imp)
+### get preds:
+Yhat = data.frame('Yhat' = Ypred)
+#write.table
+if(yourName == 'firstLast'){
+  print('SaahilDespande')
+}else{
+  fName = paste(c(yourName,'_Predictions.txt'),collapse='')
+  write.table(Yhat,file=fName,row.names=FALSE,col.names=FALSE)  
+}
+```
